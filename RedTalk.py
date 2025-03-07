@@ -438,6 +438,10 @@ class RedTalk:
         api_call_count = 0
         MAX_API_CALLS = 10  # 最多调用10次接口
         
+        # 记录频率限制次数
+        rate_limit_count = 0
+        MAX_RATE_LIMITS = 3  # 最多允许3次频率限制
+        
         while has_more and api_call_count < MAX_API_CALLS:
             try:
                 params = {
@@ -448,8 +452,11 @@ class RedTalk:
                     'xsec_token': xsec_token
                 }
                 
-                # 增加随机延迟，避免频率限制
-                await asyncio.sleep(random.uniform(3, 5))  # 每次请求间隔3-5秒
+                # 基础延迟：3-5秒
+                base_delay = random.uniform(3, 5)
+                # 随机增加0-2秒的额外延迟，模拟人类行为
+                extra_delay = random.uniform(0, 2) if random.random() < 0.3 else 0
+                await asyncio.sleep(base_delay + extra_delay)
                 
                 print(f"\n[DEBUG] 开始获取评论，第{api_call_count + 1}次调用，cursor: {cursor}")
                 data = await self.request('GET', url, params=params)
@@ -457,13 +464,23 @@ class RedTalk:
                 
                 if not data:
                     print("[ERROR] 请求返回空数据")
-                    continue  # 失败后继续尝试
-                    
-                if data.get('code') == 300013:  # 访问频率异常
-                    print("[WARN] 访问频率异常，等待15秒后重试...")
-                    await asyncio.sleep(15)  # 遇到频率限制时等待更长时间
                     continue
                     
+                if data.get('code') == 300013:  # 访问频率异常
+                    rate_limit_count += 1
+                    if rate_limit_count >= MAX_RATE_LIMITS:
+                        print("[ERROR] 频繁访问受限，建议稍后再试")
+                        return
+                    
+                    # 计算递增的等待时间：15-25秒，且每次触发都增加
+                    wait_time = random.uniform(15, 25) * (1 + rate_limit_count * 0.5)
+                    print(f"[WARN] 访问太快啦，休息一下... ({int(wait_time)}秒)")
+                    await asyncio.sleep(wait_time)
+                    continue
+                    
+                # 成功获取数据，重置频率限制计数
+                rate_limit_count = 0
+                
                 if data.get('code') != 0:
                     print(f"[ERROR] 获取评论失败: {data.get('msg', '未知错误')}")
                     return
@@ -520,13 +537,16 @@ class RedTalk:
                 has_more = data.get('data', {}).get('has_more', False)
                 
                 if has_more:
-                    # 页面间增加随机延迟
-                    await asyncio.sleep(random.uniform(2, 4))
+                    # 页面间增加更自然的随机延迟：2-6秒
+                    page_delay = random.uniform(2, 4)
+                    # 30%概率增加额外延迟
+                    if random.random() < 0.3:
+                        page_delay += random.uniform(1, 2)
+                    await asyncio.sleep(page_delay)
                     
             except Exception as e:
                 print(f"[ERROR] 获取评论出错: {str(e)}")
-                await asyncio.sleep(5)  # 出错后等待5秒
-                continue
+                return  # 遇到其他错误直接返回，避免无效重试
 
     async def save_note_comments(self, keyword: str, note_id: str, note_title: str, comments: List[Dict]):
         """保存笔记评论到对应关键词的JSON文件"""
