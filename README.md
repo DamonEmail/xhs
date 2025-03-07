@@ -59,13 +59,13 @@ python RedTalk.py
 
 ## ⚙️ 配置说明
 
-可以在 `RedTalk.py` 中修改以下参数 (◕ᴗ◕✿)：
+核心参数配置 (◕ᴗ◕✿)：
 
 ```python
-self.max_notes = 20            # 每个关键词最多收集的笔记数
+self.max_notes = 25            # 每个关键词最多收集的笔记数
 self.max_comments_per_note = 50 # 每个笔记最多收集的评论数
-self.hot_comment_min_likes = 200 # 评论最少点赞数
-self.min_reply_count = 80      # 评论最少回复数
+self.hot_comment_min_likes = 88 # 评论最少点赞数
+self.min_reply_count = 50      # 评论最少回复数
 self.request_interval = (1, 2)  # 请求间隔范围(秒)
 self.max_retries = 3           # 最大重试次数
 ```
@@ -80,6 +80,14 @@ self.max_retries = 3           # 最大重试次数
 - 🔄 程序会自动处理请求失败和重试
 - 📊 数据实时保存，不用担心中断
 - 🎨 支持评论中的图片链接获取
+
+## 🎯 使用建议
+
+- 🕐 建议在非高峰时段运行
+- 🔄 定期更换 IP 或使用代理池
+- 📊 合理设置采集参数
+- 🐢 保持较低的采集频率
+- 💡 遇到限制及时暂停
 
 ## 📊 数据格式
 
