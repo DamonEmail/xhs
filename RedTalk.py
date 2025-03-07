@@ -599,8 +599,16 @@ class RedTalk:
                     note_count += 1
                     print(f"\n[INFO] 正在处理第{note_count}个笔记: {note['title'][:30]}...")
                     
-                    # 每个笔记处理前增加随机延迟
-                    await asyncio.sleep(random.uniform(2, 4))
+                    # 获取到笔记后，模拟人类阅读行为
+                    read_time = random.uniform(8, 15)  # 模拟阅读笔记的时间：8-15秒
+                    print(f"[INFO] 阅读笔记中... ({int(read_time)}秒)")
+                    await asyncio.sleep(read_time)
+                    
+                    # 70%概率增加一个额外的停顿，模拟看图片或思考
+                    if random.random() < 0.7:
+                        extra_time = random.uniform(3, 7)
+                        print(f"[INFO] 查看图片中... ({int(extra_time)}秒)")
+                        await asyncio.sleep(extra_time)
                     
                     xsec_token = note.get('xsec_token')
                     if not xsec_token:
@@ -610,6 +618,11 @@ class RedTalk:
                     # 收集单个笔记的评论
                     note_comments = []
                     comment_count = 0
+                    
+                    # 进入评论区前再等待一下
+                    pre_comment_time = random.uniform(2, 5)
+                    print(f"[INFO] 正在进入评论区... ({int(pre_comment_time)}秒)")
+                    await asyncio.sleep(pre_comment_time)
                     
                     async for comment in self.get_note_comments(note['id'], xsec_token):
                         if comment_count >= self.max_comments_per_note:
@@ -635,9 +648,11 @@ class RedTalk:
                     else:
                         print(f"[INFO] 该笔记未找到符合条件的高赞评论")
                     
-                # 每个关键词处理完后休息一段时间
-                print(f"[INFO] 关键词 {keyword} 处理完成，休息30秒...")
-                await asyncio.sleep(30)
+                    # 每处理完3-5个笔记后，模拟一个较长的休息
+                    if note_count % random.randint(3, 5) == 0:
+                        rest_time = random.uniform(20, 30)
+                        print(f"[INFO] 休息一下... ({int(rest_time)}秒)")
+                        await asyncio.sleep(rest_time)
                 
             except Exception as e:
                 print(f"[ERROR] 处理关键词 {keyword} 时发生错误: {str(e)}")
