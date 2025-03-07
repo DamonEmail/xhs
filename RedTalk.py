@@ -200,10 +200,10 @@ class RedTalk:
         if cookie:
             self.cookies.update(cookie)
         
-        self.max_notes = 20  # 每个关键词最多收集20个笔记
+        self.max_notes = 25  # 每个关键词最多收集20个笔记
         self.max_comments_per_note = 50  # 每个笔记最多收集50个高赞评论
-        self.hot_comment_min_likes = 200  # 评论最少点赞数
-        self.min_reply_count = 80  # 评论最少回复数
+        self.hot_comment_min_likes = 88  # 评论最少点赞数
+        self.min_reply_count = 30  # 评论最少回复数
         self.data_dir = "hot_comments"
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir)
@@ -435,7 +435,7 @@ class RedTalk:
         url = 'https://edith.xiaohongshu.com/api/sns/web/v2/comment/page'
         cursor = ''
         has_more = True
-        api_call_count = 0  # 接口调用次数计数
+        api_call_count = 0
         MAX_API_CALLS = 10  # 最多调用10次接口
         
         while has_more and api_call_count < MAX_API_CALLS:
@@ -448,18 +448,26 @@ class RedTalk:
                     'xsec_token': xsec_token
                 }
                 
+                # 增加随机延迟，避免频率限制
+                await asyncio.sleep(random.uniform(3, 5))  # 每次请求间隔3-5秒
+                
                 print(f"\n[DEBUG] 开始获取评论，第{api_call_count + 1}次调用，cursor: {cursor}")
                 data = await self.request('GET', url, params=params)
                 api_call_count += 1
                 
                 if not data:
                     print("[ERROR] 请求返回空数据")
-                    return
+                    continue  # 失败后继续尝试
+                    
+                if data.get('code') == 300013:  # 访问频率异常
+                    print("[WARN] 访问频率异常，等待15秒后重试...")
+                    await asyncio.sleep(15)  # 遇到频率限制时等待更长时间
+                    continue
                     
                 if data.get('code') != 0:
                     print(f"[ERROR] 获取评论失败: {data.get('msg', '未知错误')}")
                     return
-                    
+                
                 comments = data.get('data', {}).get('comments', [])
                 print(f"[INFO] 获取到 {len(comments)} 条评论")
                 
@@ -512,14 +520,13 @@ class RedTalk:
                 has_more = data.get('data', {}).get('has_more', False)
                 
                 if has_more:
-                    await asyncio.sleep(random.uniform(1, 2))
+                    # 页面间增加随机延迟
+                    await asyncio.sleep(random.uniform(2, 4))
                     
             except Exception as e:
                 print(f"[ERROR] 获取评论出错: {str(e)}")
-                print(f"[ERROR] 错误类型: {type(e)}")
-                import traceback
-                print(f"[ERROR] 详细错误信息:\n{traceback.format_exc()}")
-                return
+                await asyncio.sleep(5)  # 出错后等待5秒
+                continue
 
     async def save_note_comments(self, keyword: str, note_id: str, note_title: str, comments: List[Dict]):
         """保存笔记评论到对应关键词的JSON文件"""
@@ -560,8 +567,6 @@ class RedTalk:
 
     async def collect_hot_comments(self, keywords_list: List[str]):
         """收集高赞评论主函数"""
-        print(f"开始搜索关键词: {keywords_list}")
-        
         for keyword in keywords_list:
             note_count = 0
             print(f"\n处理关键词: {keyword}")
@@ -569,11 +574,13 @@ class RedTalk:
             try:
                 async for note in self.search_notes(keyword):
                     if note_count >= self.max_notes:
-                        print(f"[INFO] 已达到笔记收集上限({self.max_notes}个)")
                         break
                         
                     note_count += 1
-                    print(f"\n[INFO] 正在处理第{note_count}个笔记: {note['title'][:30]}... (ID: {note['id']})")
+                    print(f"\n[INFO] 正在处理第{note_count}个笔记: {note['title'][:30]}...")
+                    
+                    # 每个笔记处理前增加随机延迟
+                    await asyncio.sleep(random.uniform(2, 4))
                     
                     xsec_token = note.get('xsec_token')
                     if not xsec_token:
@@ -608,13 +615,14 @@ class RedTalk:
                     else:
                         print(f"[INFO] 该笔记未找到符合条件的高赞评论")
                     
-                    await asyncio.sleep(random.uniform(1, 2))
-                    
+                # 每个关键词处理完后休息一段时间
+                print(f"[INFO] 关键词 {keyword} 处理完成，休息30秒...")
+                await asyncio.sleep(30)
+                
             except Exception as e:
                 print(f"[ERROR] 处理关键词 {keyword} 时发生错误: {str(e)}")
+                await asyncio.sleep(15)  # 出错后等待15秒
                 continue
-            
-            print(f"\n[INFO] 关键词 {keyword} 处理完成，共收集{note_count}个笔记的评论")
 
     async def login(self):
         """登录并获取必要的cookie"""
@@ -671,6 +679,66 @@ class RedTalk:
             print(f"[ERROR] 刷新cookie失败: {str(e)}")
             return False
 
+async def extract_comments_to_txt():
+    """从所有JSON文件中提取评论并保存为TXT"""
+    data_dir = "hot_comments"
+    try:
+        # 获取hot_comments目录下的所有json文件
+        json_files = [f for f in os.listdir(data_dir) if f.endswith('.json')]
+        if not json_files:
+            print("[INFO] 没有找到JSON文件")
+            return
+            
+        # 创建输出文件
+        output_file = "all_comments.txt"
+        comment_count = 0
+        all_comments = []  # 用于存储所有评论
+        
+        # 收集所有评论
+        for json_file in json_files:
+            file_path = os.path.join(data_dir, json_file)
+            keyword = json_file.replace('.json', '')  # 获取关键词
+            print(f"[INFO] 正在处理关键词'{keyword}'的文件")
+            
+            try:
+                with open(file_path, 'r', encoding='utf-8') as jf:
+                    data = json.load(jf)
+                    
+                # 遍历每个笔记
+                for note_id, note_data in data.items():
+                    note_title = note_data.get('title', '未知标题')
+                    comments = note_data.get('comments', [])
+                    
+                    # 遍历笔记中的评论
+                    for comment in comments:
+                        content = comment.get('content', '').strip()
+                        if content:  # 只保存非空评论
+                            like_count = comment.get('like_count', 0)
+                            all_comments.append({
+                                'content': content,
+                                'like_count': like_count,
+                                'keyword': keyword,
+                                'note_title': note_title
+                            })
+                            
+            except Exception as e:
+                print(f"[ERROR] 处理文件 {json_file} 时出错: {str(e)}")
+                continue
+        
+        # 按点赞数排序
+        all_comments.sort(key=lambda x: x['like_count'], reverse=True)
+        
+        # 写入文件
+        with open(output_file, 'w', encoding='utf-8') as f:
+            for idx, comment in enumerate(all_comments, 1):
+                f.write(f"{idx}. {comment['content']} (点赞数: {comment['like_count']}, 来自: {comment['keyword']}-{comment['note_title'][:20]}...)\n")
+                comment_count += 1
+        
+        print(f"[SUCCESS] 已提取并排序 {comment_count} 条评论到 {output_file}")
+        
+    except Exception as e:
+        print(f"[ERROR] 提取评论时出错: {str(e)}")
+
 async def main():
     """主函数"""
     try:
@@ -702,7 +770,7 @@ async def main():
                 red_talk = RedTalk(cookie=cookie_dict)
                 
                 # 开始搜索和收集评论
-                keywords = ["反差"]
+                keywords = ["怎么选", "避雷", "平替", "学生党", "职场通勤", "露营"]
                 print("[INFO] 开始收集评论数据...")
                 await red_talk.collect_hot_comments(keywords)
                 print("[INFO] 数据收集完成")
@@ -726,4 +794,7 @@ if __name__ == "__main__":
     # 安装浏览器驱动：playwright install chromium
     print("[INFO] 程序启动...")
     asyncio.run(main())
-    print("[INFO] 程序结束") 
+    print("[INFO] 程序结束")
+
+    # 可以单独运行这个函数来提取评论
+    # asyncio.run(extract_comments_to_txt()) 
